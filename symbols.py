@@ -83,7 +83,7 @@ class SymbolBaseModel():
         arithmatics = self.find_arithmatics(function_type)
         function = self.symbol
         for arithmatic in arithmatics:
-            bracket = False
+            bracket = True
             operation = arithmatic[0]
             value = arithmatic[1]
             side = arithmatic[2]
@@ -92,21 +92,21 @@ class SymbolBaseModel():
                 value = value.create_function(function_type)
 
             if operation in ['+', '-']:
-                bracket = True
+                bracket = False
 
             if side:
                 function = '{}{}{}'.format(
-                    '(' if bracket else '',
                     value,
-                    operation
+                    operation,
+                    '(' if bracket else ''
                 ) + function + '{}'.format(')' if bracket else '')
             else:
                 function = '{}'.format(
                     '(' if bracket else ''
                 ) + function + '{}{}{}'.format(
+                    ')' if bracket else '',
                     operation,
-                    value,
-                    ')' if bracket else ''
+                    value
                 )
 
         return '(' + function + ')' if not bracket else function
@@ -134,19 +134,29 @@ class ExpandingFactoringModel(SymbolBaseModel):
         for arithmatic in arithmatics:
             operation = arithmatic[0]
             value = arithmatic[1]
-            if type(value) == type(self):
-                pass
+
 
     def set_simplified_arithmatics(self):
+        connected_operations = {
+            '+': '-',
+            '-': '+',
+            '*': '/',
+            '/': '*',
+        }
         simplified_arithmatics = []
         previous_operation = None
+
         arithmatics = deepcopy(self.simplified_arithmatics or self.arithmatics)
         for arithmatic in arithmatics:
             operation = arithmatic[0]
             value = arithmatic[1]
-            if operation == previous_operation:
+            if previous_operation and (
+                    operation == previous_operation or
+                    connected_operations[previous_operation] == operation):
                 if operation == '+':
                     simplified_arithmatics[-1][1] += value
+                elif operation == '-':
+                    simplified_arithmatics[-1][1] -= value
                 elif operation == '*':
                     simplified_arithmatics[-1][1] *= value
                 elif operation == '/':
@@ -154,7 +164,9 @@ class ExpandingFactoringModel(SymbolBaseModel):
                 elif operation == '**':
                     simplified_arithmatics[-1][1] **= value
                 else:
-                    raise ValueError('operation %s is not supported')
+                    raise ValueError(
+                        'operation {} is not supported'.format(operation)
+                    )
             else:
                 simplified_arithmatics.append(arithmatic)
 
