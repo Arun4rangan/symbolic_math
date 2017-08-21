@@ -1,3 +1,4 @@
+from arithmatic import ArithmaticsModel
 from copy import deepcopy
 
 
@@ -16,45 +17,65 @@ class SymbolBaseModel():
 
     def __radd__(self, value, **kwargs):
         self, value = self.base_arithmatics(value)
-        self.arithmatics.append(['+', value, 1])
+        self.arithmatics.append(
+            ArithmaticsModel('+', value, 1)
+        )
         return self
     def __add__(self, value, **kwargs):
         self, value = self.base_arithmatics(value)
-        self.arithmatics.append(['+', value, 0])
+        self.arithmatics.append(
+            ArithmaticsModel('+', value, 0)
+        )
         return self
     def __mul__(self, value, **kwargs):
         self, value = self.base_arithmatics(value)
-        self.arithmatics.append(['*', value, 0])
+        self.arithmatics.append(
+            ArithmaticsModel('*', value, 0)
+        )
         return self
     def __rmul__(self, value, **kwargs):
         self, value = self.base_arithmatics(value)
-        self.arithmatics.append(['*', value, 1])
+        self.arithmatics.append(
+            ArithmaticsModel('*', value, 1)
+        )
         return self
     def __truediv__(self, value, **kwargs):
         self, value = self.base_arithmatics(value)
-        self.arithmatics.append(['/', value, 0])
+        self.arithmatics.append(
+            ArithmaticsModel('/', value, 0)
+        )
         return self
     def __rtruediv__(self, value, **kwargs):
         self, value = self.base_arithmatics(value)
-        self.arithmatics.append(['/', value, 1])
+        self.arithmatics.append(
+            ArithmaticsModel('/', value, 1)
+        )
         return self
     def __sub__(self, value, **kwargs):
         self, value = self.base_arithmatics(value)
-        self.arithmatics.append(['-', value, 0])
+        self.arithmatics.append(
+            ArithmaticsModel('-', value, 0)
+        )
         return self
     def __rsub__(self, value, **kwargs):
         self, value = self.base_arithmatics(value)
-        self.arithmatics.append(['-', value, 1])
+        self.arithmatics.append(
+            ArithmaticsModel('-', value, 1)
+        )
         return self
 
     def __pow__(self, value, **kwargs):
         self, value = self.base_arithmatics(value)
-        self.arithmatics.append(['**', value, 0])
+        self.arithmatics.append(
+            ArithmaticsModel('**', value, 0)
+        )
         return self
 
     def __rpow__(self, value, **kwargs):
         self, value = self.base_arithmatics(value)
-        self.arithmatics.append(['**', value, 1])
+        self.arithmatics.append(
+            ArithmaticsModel('**', value, 1)
+        )
         return self
 
     def __repr__(self):
@@ -79,25 +100,23 @@ class SymbolBaseModel():
         pass
 
     def create_function(self, function_type=None):
+        previous_arithmatic = None
         bracket = False
         arithmatics = self.find_arithmatics(function_type)
         function = self.symbol
         for arithmatic in arithmatics:
             bracket = True
-            operation = arithmatic[0]
-            value = arithmatic[1]
-            side = arithmatic[2]
 
-            if type(value) == type(self):
-                value = value.create_function(function_type)
-
-            if operation in ['+', '-']:
+            if previous_arithmatic and (
+                arithmatic.operation in ['+', '-']
+                or previous_arithmatic.operation == arithmatic.operation
+            ):
                 bracket = False
 
-            if side:
+            if arithmatic.side:
                 function = '{}{}{}'.format(
-                    value,
-                    operation,
+                    arithmatic.get_value(function_type),
+                    arithmatic.operation,
                     '(' if bracket else ''
                 ) + function + '{}'.format(')' if bracket else '')
             else:
@@ -105,11 +124,12 @@ class SymbolBaseModel():
                     '(' if bracket else ''
                 ) + function + '{}{}{}'.format(
                     ')' if bracket else '',
-                    operation,
-                    value
+                    arithmatic.operation,
+                    arithmatic.get_value(function_type)
                 )
+            previous_arithmatic = arithmatic
+        return '(' + function + ')'
 
-        return '(' + function + ')' if not bracket else function
 
 
 class ExpandingFactoringModel(SymbolBaseModel):
@@ -120,6 +140,22 @@ class ExpandingFactoringModel(SymbolBaseModel):
             function_type='simplify'
         )
 
+    def set_simplified_arithmatics(self):
+        simplified_arithmatics = []
+        previous_arithmatic = None
+
+        arithmatics = deepcopy(self.simplified_arithmatics or self.arithmatics)
+        for arithmatic in arithmatics:
+            result = arithmatic.simplify(previous_arithmatic)
+            if result:
+                simplified_arithmatics[-1] = result
+            else:
+                simplified_arithmatics.append(arithmatic)
+
+            previous_arithmatic = arithmatic
+
+        self.simplified_arithmatics = simplified_arithmatics
+
     def expand(self):
         if not self.expanded_arithmatics:
             self.set_expanded_arithmatics()
@@ -128,65 +164,64 @@ class ExpandingFactoringModel(SymbolBaseModel):
         )
 
     def set_expanded_arithmatics(self):
-        if self.simplified_arithmatics is None:
+        import ipdb
+        ipdb.set_trace()
+        if not self.simplified_arithmatics:
             self.set_simplified_arithmatics()
         arithmatics = deepcopy(self.simplified_arithmatics)
-        for arithmatic in arithmatics:
-            operation = arithmatic[0]
-            value = arithmatic[1]
-
-
-    def set_simplified_arithmatics(self):
-        connected_operations = {
-            '+': '-',
-            '-': '+',
-            '*': '/',
-            '/': '*',
-        }
-        simplified_arithmatics = []
-        previous_operation = None
-
-        arithmatics = deepcopy(self.simplified_arithmatics or self.arithmatics)
-        for arithmatic in arithmatics:
-            operation = arithmatic[0]
-            value = arithmatic[1]
-            if previous_operation and (
-                    operation == previous_operation or
-                    connected_operations[previous_operation] == operation):
-                if operation == '+':
-                    simplified_arithmatics[-1][1] += value
-                elif operation == '-':
-                    simplified_arithmatics[-1][1] -= value
-                elif operation == '*':
-                    simplified_arithmatics[-1][1] *= value
-                elif operation == '/':
-                    simplified_arithmatics[-1][1] /= value
-                elif operation == '**':
-                    simplified_arithmatics[-1][1] **= value
-                else:
-                    raise ValueError(
-                        'operation {} is not supported'.format(operation)
+        expanded_arithmatics = []
+        for item, arithmatic in enumerate(arithmatics):
+            if arithmatic.operation == '*':
+                expanded_arithmatics.extend(
+                    self.distribute_arithmatics(
+                        expanded_arithmatics or arithmatics[:item],
+                        arithmatic
                     )
-            else:
-                simplified_arithmatics.append(arithmatic)
-
-            previous_operation = operation
-
-        self.simplified_arithmatics = simplified_arithmatics
+                )
+                break
+        expanded_arithmatics.extend(
+            arithmatics[item + 1 if arithmatic.operation == '*' else item:]
+        )
+        self.expanded_arithmatics = expanded_arithmatics
 
     def find_arithmatics(self, function_type):
         if function_type == 'simplify':
             if not self.simplified_arithmatics:
                 self.set_simplified_arithmatics()
             return self.simplified_arithmatics
+        elif function_type == 'expand':
+            if not self.expanded_arithmatics:
+                self.set_expanded_arithmatics()
+            return self.expanded_arithmatics
 
         return self.arithmatics
 
-    def distribute_operation(self, arithmatic_array, operation):
-        for arithmatic in arithmatic_array:
-            operation = arithmatic[0]
-            value = arithmatic[1]
+    def distribute_arithmatics(self, arithmatic_array, arithmatic):
+        import ipdb
+        ipdb.set_trace
+        distributed_array = []
+        arithmatic_array = deepcopy(arithmatic_array)
+        for item, target in enumerate(arithmatic_array):
+            if target.operation == '**':
+                distributed_array.extend([target, arithmatic])
+            elif target.operation in ['+', '-']:
+                distributed_array.extend(
+                    [
+                        arithmatic,
+                        arithmatic.combine(target)
+                    ]
+                )
+            elif target.operation in ['*', '/']:
+                distributed_array.append(
+                    target.combine(arithmatic)
+                )
+            else:
+                raise ValueError(
+                    'operation {} is not supported'.format(target.operation)
+                )
 
+
+        return distributed_array
 
 
 class Symbol(ExpandingFactoringModel):
