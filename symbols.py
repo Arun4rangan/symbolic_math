@@ -12,6 +12,8 @@ class SymbolBaseModel():
         self.symbol = symbol
 
     def __eq__(self, other):
+        if other is None or type(self) != type(other):
+            return False
         return self.__dict__ == other.__dict__
 
     def base_arithmatics(self, value, **kwargs):
@@ -22,33 +24,166 @@ class SymbolBaseModel():
     def new_symbol(self, **kwargs):
         return Symbol(
             symbol=self.symbol,
-            arithmatics=kwargs['arithmatics']
+            arithmatics=deepcopy(kwargs['arithmatics'])
         )
+
+    def apply_operation(self, arithmatic):
+        operations = {
+            '+': self.__add__,
+            '-': self.__sub__,
+            '*': self.__mul__,
+            '/': self.__truediv__,
+            '**': self.__pow__
+        }
+        return operations[arithmatic.operation](arithmatic.value)
+
+    def common_adding(self, value):
+        if type(value) == type(self) and value.symbol == self.symbol:
+            array = split_arithmatic_array_on_operation(
+                self.arithmatics,
+                ['-', '+']
+            )[0]
+            target = split_arithmatic_array_on_operation(
+                value.arithmatics,
+                ['-', '+']
+            )[0]
+            if array is None or target is None:
+                return
+            max_lng = max(len(array), len(target))
+            min_lng = min(len(array), len(target))
+            if value.arithmatics == self.arithmatics:
+                return self.__mul__(2)
+            if (
+                min_lng + 1 >= max_lng
+                and array[:max_lng - 1] == target[:max_lng - 1]
+            ):
+                l_o = array[-1] if array else None
+                l_ot = target[-1] if target else None
+                if max_lng == min_lng:
+                    if l_o.operation == '*' and l_ot.operation == '*':
+                        l_o.value = l_o.value + l_ot.value
+                        return self
+                else:
+                    if len(array) > len(target) and l_o.operation == '*':
+                        l_o.value = l_o.value + 1
+                        return self
+                    elif l_ot and l_ot.operation == '*':
+                        return self.arithmatics[0].value.__mul__(l_ot.value + 1)
+
+    def common_multiple(self, value):
+        if type(value) == type(self) and value.symbol == self.symbol:
+            array = split_arithmatic_array_on_operation(
+                self.arithmatics,
+                ['-', '+']
+            )
+            target = split_arithmatic_array_on_operation(
+                value.arithmatics,
+                ['-', '+']
+            )
+            if array[-1] != None or target[-1] != None:
+                return
+            first_arith = self.arithmatics[0] if self.arithmatics else None
+            target_arith = value.arithmatics[0] if value.arithmatics else None
+            skip_first = False
+
+            if not first_arith and not target_arith:
+                return self.__pow__(2)
+            elif (
+                target_arith
+                and target_arith.operation == '**'
+                and (not first_arith
+                     or first_arith.operation != '**')
+            ):
+                self.arithmatics.insert(
+                    0,
+                    ArithmaticsModel(
+                        operation='**',
+                        value=target_arith.value + 1,
+                        side=0
+                    )
+                )
+                skip_first = True
+            elif (
+                first_arith
+                and first_arith.operation == '**'
+                and (not target_arith
+                     or target_arith.operation != '**')
+            ):
+                first_arith.value = first_arith.value + 1
+            elif (
+                first_arith
+                and target_arith
+                and first_arith.operation == '**'
+                and target_arith.operation == '**'
+            ):
+                first_arith.value = first_arith.value + target_arith.value
+                skip_first = True
+            else:
+                self.arithmatics.insert(
+                    0,
+                    ArithmaticsModel(
+                        operation='**',
+                        value=2,
+                        side=0
+                    )
+                )
+
+            for x in value.arithmatics[1 if skip_first else 0:]:
+                self = self.apply_operation(x)
+
+            return self
+
 
     def __radd__(self, value, **kwargs):
         self, value = self.base_arithmatics(value)
+
+        result = self.common_adding(value)
+
+        if result:
+            return result
         self.arithmatics.append(
             ArithmaticsModel('+', value, 1)
         )
         return self
+
     def __add__(self, value, **kwargs):
         self, value = self.base_arithmatics(value)
+
+        result = self.common_adding(value)
+
+        if result:
+            return result
+
         self.arithmatics.append(
             ArithmaticsModel('+', value, 0)
         )
         return self
+
     def __mul__(self, value, **kwargs):
         self, value = self.base_arithmatics(value)
         if type(value) != type(self) and value == 1:
             return self
+
+        result = self.common_multiple(value)
+
+        if result:
+            return result
+
         self.arithmatics.append(
             ArithmaticsModel('*', value, 0)
         )
         return self
     def __rmul__(self, value, **kwargs):
         self, value = self.base_arithmatics(value)
+
         if type(value) != type(self) and value == 1:
             return self
+
+        result = self.common_multiple(value)
+
+        if result:
+            return result
+
         self.arithmatics.append(
             ArithmaticsModel('*', value, 1)
         )
@@ -178,16 +313,12 @@ class ExpandingFactoringModel(SymbolBaseModel):
     def expand(self):
         if self.expanded_arithmatics == None:
             self.set_expanded_arithmatics()
-        print('___________')
-        print(self)
-        print(self.arithmatics)
-        print(self.simplified_arithmatics)
-        print(self.expanded_arithmatics)
+
         self.expanded_arithmatics = self.simplify_arithmatics(
             input_arithmatics=self.expanded_arithmatics,
-            avoid_simplification=['+', '-']
+            restricted_simplification=['+', '-']
         )
-        print(self.expanded_arithmatics)
+
         return super().create_function(
             function_type='expand'
         )
@@ -215,7 +346,6 @@ class ExpandingFactoringModel(SymbolBaseModel):
                 step if step == None or step == len(arithmatics) else step + 1:
             ]
         )
-
         self.expanded_arithmatics = expanded_arithmatics
 
     def find_arithmatics(self, function_type):
@@ -244,8 +374,9 @@ class ExpandingFactoringModel(SymbolBaseModel):
                 arithmatic
             )
 
+
     def distribute_symbol_types(self, arithmatic_array, arithmatic):
-        arithmatic.value.expand()
+        arithmatic.value.set_expanded_arithmatics()
         target_expanded = arithmatic.value.expanded_arithmatics
         target_splitted = split_arithmatic_array_on_operation(
             target_expanded,
@@ -262,14 +393,7 @@ class ExpandingFactoringModel(SymbolBaseModel):
             ),
             side='1'
         )
-        symbol_2 = ArithmaticsModel(
-            operation='*',
-            value=arithmatic.value.new_symbol(
-                arithmatics=target_splitted[0]
-            ),
-            side='1'
-        )
-        d_a = deepcopy(array_splitted[0]) if array_splitted[0] else []
+        d_a = []
         for step, target in enumerate(target_splitted):
             if step == 0:
                 symbol_2 = ArithmaticsModel(
@@ -279,7 +403,13 @@ class ExpandingFactoringModel(SymbolBaseModel):
                     ),
                     side='1'
                 )
-                d_a.append(symbol_2)
+                d_a.extend(
+                    (self.new_symbol(
+                        arithmatics=array_splitted[0]
+                    ) * arithmatic.value.new_symbol(
+                        arithmatics=target
+                    )).arithmatics
+                )
                 if array_splitted[1]:
                     d_a.append(symbol_2.combine(array_splitted[1]))
             else:
@@ -297,10 +427,9 @@ class ExpandingFactoringModel(SymbolBaseModel):
                                 result_operation='+',
                                 operation_applied='*')
                         )
-        import ipdb
-        ipdb.set_trace()
         [x.update(side=0) for x in d_a if x]
         return [x for x in d_a if x]
+
 
 
     def distribute_real_number_types(self, arithmatic_array, arithmatic):

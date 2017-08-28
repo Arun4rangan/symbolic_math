@@ -20,6 +20,8 @@ class ArithmaticsModel():
         self.side = kwargs.get('side', self.side)
 
     def __eq__(self, other):
+        if other is None:
+            return False
         return self.__dict__ == other.__dict__
 
     def __repr__(self):
@@ -32,9 +34,11 @@ class ArithmaticsModel():
         return self.value
 
     def simplify(self, target, **kwargs):
-        avoid_simplification = kwargs.get('avoid_simplification', [])
-        if target.operation in avoid_simplification:
-            return
+        r_s = kwargs.get('restricted_simplification', [])
+        if target.operation in r_s:
+            if type(self.value) != type(target.value):
+                return
+
         if target and (
                 self.operation == target.operation or
                 self.connected_operations[target.operation] == self.operation
