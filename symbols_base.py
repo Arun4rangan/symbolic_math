@@ -237,7 +237,8 @@ class SymbolBaseModel():
 
     def set_function(self):
         variables = set(
-            x[1].symbol for x in self.arithmatics if type(x[1]) is type(self)
+            x.value.symbol for x in self.arithmatics
+            if type(x.value) is type(self)
         )
         variables.add(self.symbol)
         self.function = eval(
